@@ -7,6 +7,7 @@ struct FinalCutView: View {
     @State private var dateString = Date().defaultProjectDate
     @State private var projectName = ""
     @State private var videoSource: VideoSource = .uploadFolder
+    @State private var detectedVolumes: [String] = []
 
     private let organizer = FileOrganizer()
 
@@ -95,6 +96,11 @@ struct FinalCutView: View {
             dateString = Date().defaultProjectDate
             runController.runAction = runOrganize
             runController.canRun = !projectName.trimmingCharacters(in: .whitespaces).isEmpty
+            // 볼륨 감지를 백그라운드에서 실행 (메인 스레드 블로킹 방지)
+            DispatchQueue.global(qos: .background).async {
+                let volumes = organizer.detectVolumes()
+                DispatchQueue.main.async { detectedVolumes = volumes }
+            }
         }
         .onChange(of: projectName) { newValue in
             runController.canRun = !newValue.trimmingCharacters(in: .whitespaces).isEmpty
@@ -124,14 +130,13 @@ struct FinalCutView: View {
     // MARK: - 감지된 볼륨
 
     private var detectedVolumesView: some View {
-        let volumes = organizer.detectVolumes()
-        return Group {
-            if !volumes.isEmpty {
+        Group {
+            if !detectedVolumes.isEmpty {
                 HStack {
                     Image(systemName: "externaldrive.fill")
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Text("감지된 볼륨: \(volumes.joined(separator: ", "))")
+                    Text("감지된 볼륨: \(detectedVolumes.joined(separator: ", "))")
                         .font(.caption)
                         .foregroundColor(.secondary)
                     Spacer()
@@ -143,12 +148,12 @@ struct FinalCutView: View {
     // MARK: - 폴더 구조 미리보기
 
     private var previewView: some View {
-        let projectLabel = projectName.isEmpty ? "[프로젝트명]" : projectName
-        let root = "\(dateString) \(projectLabel)"
-        let bundleName = "\(projectLabel).fcpbundle"
+        let label = projectName.isEmpty ? "[프로젝트명]" : projectName
+        let root = "\(dateString) \(label)"
+        let bundleName = "\(label).fcpbundle"
+        let events = ["1. Source", "2. Project", "3. Image", "4. Music"]
 
         return VStack(alignment: .leading, spacing: 6) {
-            // 프로젝트 루트
             HStack(spacing: 6) {
                 Image(systemName: "folder.fill.badge.plus").foregroundColor(.yellow)
                 Text(root)
@@ -157,71 +162,47 @@ struct FinalCutView: View {
                 Spacer()
             }
 
-            // 프로젝트 레벨 폴더
-            let topItems: [(indent: Int, name: String, isBundle: Bool, isLast: Bool)] = [
-                (0, bundleName, true, false),
-                (0, "RAW",      false, false),
-                (0, "Export",   false, true),
-            ]
-
             VStack(alignment: .leading, spacing: 2) {
-                ForEach(topItems.indices, id: \.self) { idx in
-                    let item = topItems[idx]
-                    HStack(spacing: 0) {
-                        Text(item.isLast ? "└── " : "├── ")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(.secondary)
-                        Image(systemName: item.isBundle ? "square.stack.3d.up.fill" : "folder.fill")
-                            .font(.caption2)
-                            .foregroundColor(item.isBundle ? .blue : .yellow)
-                        Text(" \(item.name)")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(item.isBundle ? .blue : .primary)
-                        Spacer()
-                    }
-
-                    // fcpbundle 내부 이벤트 구조
-                    if item.isBundle {
-                        let events = ["1. Source.fcpevent", "2. Project.fcpevent",
-                                      "3. Image.fcpevent", "4. Music.fcpevent"]
-                        ForEach(events.indices, id: \.self) { ei in
-                            HStack(spacing: 0) {
-                                Text("│   ")
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundColor(.secondary)
-                                Text(ei == events.count - 1 ? "└── " : "├── ")
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundColor(.secondary)
-                                Image(systemName: "film.stack")
-                                    .font(.caption2)
-                                    .foregroundColor(.purple)
-                                Text(" \(events[ei])")
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundColor(.purple)
-                                Spacer()
-                            }
-                            HStack(spacing: 0) {
-                                Text(ei == events.count - 1 ? "        " : "│       ")
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundColor(.secondary)
-                                Text("└── ")
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundColor(.secondary)
-                                Image(systemName: "folder")
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                                Text(" Original Media")
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundColor(.secondary)
-                                Spacer()
-                            }
-                        }
-                    }
+                // 1. Library
+                previewRow(prefix: "├── ", icon: "folder.fill", color: .yellow, name: "1. Library")
+                // └── bundleName.fcpbundle
+                previewRow(prefix: "│   └── ", icon: "square.stack.3d.up.fill", color: .blue, name: bundleName)
+                // 이벤트들
+                ForEach(events.indices, id: \.self) { ei in
+                    let isLast = ei == events.count - 1
+                    previewRow(
+                        prefix: isLast ? "│       └── " : "│       ├── ",
+                        icon: "film.stack", color: .purple,
+                        name: events[ei]
+                    )
+                    previewRow(
+                        prefix: isLast ? "│           └── " : "│       │   └── ",
+                        icon: "folder", color: .secondary,
+                        name: "Original Media"
+                    )
                 }
+                // 2. RAW / 3. Export
+                previewRow(prefix: "├── ", icon: "folder.fill", color: .yellow, name: "2. RAW")
+                previewRow(prefix: "└── ", icon: "folder.fill", color: .yellow, name: "3. Export")
             }
             .padding(10)
             .background(Color(NSColor.textBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+    }
+
+    private func previewRow(prefix: String, icon: String, color: Color, name: String) -> some View {
+        HStack(spacing: 0) {
+            Text(prefix)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundColor(.secondary)
+            Image(systemName: icon)
+                .font(.caption2)
+                .foregroundColor(color)
+            Text(" \(name)")
+                .font(.system(.caption, design: .monospaced))
+                .foregroundColor(color == .secondary ? .secondary : .primary)
+            Spacer()
         }
     }
 
@@ -233,6 +214,8 @@ struct FinalCutView: View {
 
         withAnimation { runController.executionState = .loading }
 
+        let sourceIcon = videoSource == .actionCam ? "camera.fill" : "folder.badge.plus"
+
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 let result = try organizer.organizeFCP(
@@ -242,7 +225,18 @@ struct FinalCutView: View {
                     videoSource: videoSource,
                     actionCamPath: settings.fcpActionCamPath,
                     uploadFolderPath: settings.fcpUploadFolderPath
-                )
+                ) { current, total, fileName in
+                    DispatchQueue.main.async {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            runController.executionState = .copying(CopyProgressState(
+                                current: current,
+                                total: total,
+                                fileName: fileName,
+                                sourceIcon: sourceIcon
+                            ))
+                        }
+                    }
+                }
 
                 DispatchQueue.main.async {
                     withAnimation {

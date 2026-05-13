@@ -32,7 +32,7 @@ class AppSettings: ObservableObject {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         fcpSavePath = UserDefaults.standard.string(forKey: "fcpSavePath") ?? "\(home)/Movies"
         fcpUploadFolderPath = UserDefaults.standard.string(forKey: "fcpUploadFolderPath") ?? "\(home)/Downloads"
-        fcpActionCamPath = UserDefaults.standard.string(forKey: "fcpActionCamPath") ?? "/Volumes/ActionCam"
+        fcpActionCamPath = UserDefaults.standard.string(forKey: "fcpActionCamPath") ?? "/Volumes/OsmoAction/DCIM/DJI_001"
         fcpCanonPath = UserDefaults.standard.string(forKey: "fcpCanonPath") ?? "/Volumes/EOS_DIGITAL/DCIM/100CANON"
 
         lrSavePath = UserDefaults.standard.string(forKey: "lrSavePath") ?? "\(home)/Pictures"
@@ -60,8 +60,10 @@ class RunController: ObservableObject {
     }
 
     var isLoading: Bool {
-        if case .loading = executionState { return true }
-        return false
+        switch executionState {
+        case .loading, .copying: return true
+        default: return false
+        }
     }
 
     var showsFeedback: Bool {

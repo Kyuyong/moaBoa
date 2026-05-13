@@ -143,8 +143,8 @@ struct LightroomView: View {
             ? "\(dateString) [프로젝트명]"
             : "\(dateString) \(projectName)"
         let items: [(indent: Int, name: String, isLast: Bool)] = [
-            (0, "Catalog", false),
-            (0, "RAW", true),
+            (0, "1. Catalog", false),
+            (0, "2. RAW", true),
         ]
         return VStack(alignment: .leading, spacing: 4) {
             HStack {
@@ -167,6 +167,8 @@ struct LightroomView: View {
 
         withAnimation { runController.executionState = .loading }
 
+        let sourceIcon = photoSource == .canonCard ? "sdcard.fill" : "folder.badge.plus"
+
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 let result = try organizer.organizeLightroom(
@@ -176,7 +178,18 @@ struct LightroomView: View {
                     photoSource: photoSource,
                     canonPath: settings.lrCanonPath,
                     uploadFolderPath: settings.lrUploadFolderPath
-                )
+                ) { current, total, fileName in
+                    DispatchQueue.main.async {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            runController.executionState = .copying(CopyProgressState(
+                                current: current,
+                                total: total,
+                                fileName: fileName,
+                                sourceIcon: sourceIcon
+                            ))
+                        }
+                    }
+                }
 
                 DispatchQueue.main.async {
                     withAnimation {

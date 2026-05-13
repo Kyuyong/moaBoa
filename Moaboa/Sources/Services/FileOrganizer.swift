@@ -30,10 +30,12 @@ class FileOrganizer {
         savePath: String,
         videoSource: VideoSource,
         actionCamPath: String,
-        uploadFolderPath: String
+        uploadFolderPath: String,
+        onProgress: ((Int, Int, String) -> Void)? = nil
     ) throws -> OrganizeResult {
         let projectRoot = (savePath as NSString).appendingPathComponent("\(date) \(projectName)")
-        let bundlePath = (projectRoot as NSString).appendingPathComponent("\(projectName).fcpbundle")
+        let libraryFolder = (projectRoot as NSString).appendingPathComponent("1. Library")
+        let bundlePath = (libraryFolder as NSString).appendingPathComponent("\(projectName).fcpbundle")
 
         var createdFolders: [String] = []
         var movedFiles: [String] = []
@@ -49,8 +51,8 @@ class FileOrganizer {
             }
         }
 
-        // FCP가 인식할 수 있는 Settings.plist 생성
-        createLibrarySettings(bundlePath: bundlePath)
+        // FCP 라이브러리 번들 내부 구조 생성
+        createLibraryBundle(bundlePath: bundlePath)
 
         // 소스 경로 결정
         let sourcePath: String
@@ -61,8 +63,8 @@ class FileOrganizer {
             sourcePath = uploadFolderPath
         }
 
-        // 영상 파일을 RAW 폴더로 이동
-        let rawFolder = (projectRoot as NSString).appendingPathComponent("RAW")
+        // 영상 파일을 2. RAW 폴더로 이동
+        let rawFolder = (projectRoot as NSString).appendingPathComponent("2. RAW")
         let videoExtensions: Set<String> = ["mp4", "mov", "avi", "mts", "m2ts",
                                             "MP4", "MOV", "AVI", "MTS", "M2TS"]
 
@@ -74,14 +76,15 @@ class FileOrganizer {
                 errors.append("소스 폴더에 영상 파일이 없습니다.")
             }
 
-            for file in videoFiles {
+            for (idx, file) in videoFiles.enumerated() {
                 let src = (sourcePath as NSString).appendingPathComponent(file)
                 let dst = (rawFolder as NSString).appendingPathComponent(file)
+                onProgress?(idx + 1, videoFiles.count, file)
                 do {
-                    try fm.moveItem(atPath: src, toPath: dst)
+                    try fm.copyItem(atPath: src, toPath: dst)
                     movedFiles.append(file)
                 } catch {
-                    errors.append("파일 이동 실패: \(file)")
+                    errors.append("파일 복사 실패: \(file)")
                 }
             }
         } else if errors.isEmpty {
@@ -94,28 +97,30 @@ class FileOrganizer {
     // fcpbundle 내부의 FCP 이벤트 구조 + 프로젝트 폴더
     private func fcpFolders(root: String, projectName: String) -> [String] {
         let r = root as NSString
-        let bundle = r.appendingPathComponent("\(projectName).fcpbundle") as NSString
+        let bundle = (r.appendingPathComponent("1. Library") as NSString)
+                        .appendingPathComponent("\(projectName).fcpbundle") as NSString
         return [
-            // FCP 이벤트 (각 이벤트 안에 Original Media 포함)
-            bundle.appendingPathComponent("1. Source.fcpevent/Original Media"),
-            bundle.appendingPathComponent("2. Project.fcpevent/Original Media"),
-            bundle.appendingPathComponent("3. Image.fcpevent/Original Media"),
-            bundle.appendingPathComponent("4. Music.fcpevent/Original Media"),
+            // FCP 이벤트 (.fcpevent 확장자 포함, Original Media 서브폴더)
+            bundle.appendingPathComponent("1. Source/Original Media"),
+            bundle.appendingPathComponent("2. Project/Original Media"),
+            bundle.appendingPathComponent("3. Image/Original Media"),
+            bundle.appendingPathComponent("4. Music/Original Media"),
             // 프로젝트 레벨 폴더
-            r.appendingPathComponent("RAW"),
-            r.appendingPathComponent("Export"),
+            r.appendingPathComponent("2. RAW"),
+            r.appendingPathComponent("3. Export"),
         ]
     }
 
-    // FCP가 라이브러리를 인식하기 위한 최소 Settings.plist 생성
+    // FCP 라이브러리 번들 초기화 — 디렉토리 구조만 생성, DB는 FCP가 직접 초기화
+    private func createLibraryBundle(bundlePath: String) {
+        createLibrarySettings(bundlePath: bundlePath)
+    }
+
+    // FCP가 번들을 인식하기 위한 최소 Settings.plist
     private func createLibrarySettings(bundlePath: String) {
         let plistPath = (bundlePath as NSString).appendingPathComponent("Settings.plist")
         guard !fm.fileExists(atPath: plistPath) else { return }
-
-        let plist: [String: Any] = [
-            "FFLibraryFormatVersion": 1,
-            "FFCreatedBy": "Moaboa"
-        ]
+        let plist: [String: Any] = ["FFLibraryFormatVersion": 1]
         if let data = try? PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0) {
             fm.createFile(atPath: plistPath, contents: data)
         }
@@ -129,7 +134,8 @@ class FileOrganizer {
         savePath: String,
         photoSource: PhotoSource,
         canonPath: String,
-        uploadFolderPath: String
+        uploadFolderPath: String,
+        onProgress: ((Int, Int, String) -> Void)? = nil
     ) throws -> OrganizeResult {
         let projectRoot = (savePath as NSString).appendingPathComponent("\(date) \(projectName)")
         let folders = lrFolders(root: projectRoot)
@@ -155,7 +161,7 @@ class FileOrganizer {
             sourcePath = uploadFolderPath
         }
 
-        let rawDestFolder = (projectRoot as NSString).appendingPathComponent("RAW")
+        let rawDestFolder = (projectRoot as NSString).appendingPathComponent("2. RAW")
         let photoExtensions = ["raw", "cr2", "cr3", "nef", "arw", "orf", "RAF",
                                "RAW", "CR2", "CR3", "NEF", "ARW", "ORF",
                                "jpg", "jpeg", "JPG", "JPEG"]
@@ -170,14 +176,15 @@ class FileOrganizer {
                 errors.append("소스 폴더에 사진 파일이 없습니다.")
             }
 
-            for file in photoFiles {
+            for (idx, file) in photoFiles.enumerated() {
                 let src = (sourcePath as NSString).appendingPathComponent(file)
                 let dst = (rawDestFolder as NSString).appendingPathComponent(file)
+                onProgress?(idx + 1, photoFiles.count, file)
                 do {
-                    try fm.moveItem(atPath: src, toPath: dst)
+                    try fm.copyItem(atPath: src, toPath: dst)
                     movedFiles.append(file)
                 } catch {
-                    errors.append("파일 이동 실패: \(file)")
+                    errors.append("파일 복사 실패: \(file)")
                 }
             }
         } else if errors.isEmpty {
@@ -190,8 +197,8 @@ class FileOrganizer {
     private func lrFolders(root: String) -> [String] {
         let p = root as NSString
         return [
-            p.appendingPathComponent("Catalog"),
-            p.appendingPathComponent("RAW"),
+            p.appendingPathComponent("1. Catalog"),
+            p.appendingPathComponent("2. RAW"),
         ]
     }
 

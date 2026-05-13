@@ -63,9 +63,18 @@ struct ContentView: View {
                 Text("Moaboa")
                     .font(.title3)
                     .fontWeight(.bold)
-                Text("모아보아 · 파일 정리 자동화")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
+                HStack(spacing: 5) {
+                    Text("모아보아 · 파일 정리 자동화")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    Text("v1.01")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Color.secondary.opacity(0.12))
+                        .clipShape(Capsule())
+                }
             }
             Spacer()
             playButton
