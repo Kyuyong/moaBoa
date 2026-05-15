@@ -13,3 +13,6 @@ DerivedData/
 
 # Claude Code (로컬 전용 설정)
 .claude/
+
+# 내부 개발 문서
+Documents/
