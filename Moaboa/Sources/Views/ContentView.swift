@@ -67,7 +67,7 @@ struct ContentView: View {
                     Text("모아보아 · 파일 정리 자동화")
                         .font(.caption2)
                         .foregroundColor(.secondary)
-                    Text("v1.01")
+                    Text("v1.2")
                         .font(.system(size: 9, weight: .medium))
                         .foregroundColor(.secondary)
                         .padding(.horizontal, 5)

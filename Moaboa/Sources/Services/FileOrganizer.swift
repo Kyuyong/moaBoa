@@ -70,7 +70,17 @@ class FileOrganizer {
 
         if fm.fileExists(atPath: sourcePath) {
             let files = (try? fm.contentsOfDirectory(atPath: sourcePath)) ?? []
-            let videoFiles = files.filter { videoExtensions.contains(($0 as NSString).pathExtension) }
+            var videoFiles = files.filter { videoExtensions.contains(($0 as NSString).pathExtension) }
+
+            // 업로드 폴더인 경우 프로젝트 날짜와 파일 생성일이 일치하는 파일만 포함
+            if videoSource == .uploadFolder, let projectDate = parseDate(date) {
+                videoFiles = videoFiles.filter { file in
+                    let src = (sourcePath as NSString).appendingPathComponent(file)
+                    guard let attrs = try? fm.attributesOfItem(atPath: src),
+                          let creationDate = attrs[.creationDate] as? Date else { return false }
+                    return Calendar.current.isDate(creationDate, inSameDayAs: projectDate)
+                }
+            }
 
             if videoFiles.isEmpty && errors.isEmpty {
                 errors.append("소스 폴더에 영상 파일이 없습니다.")
@@ -203,6 +213,13 @@ class FileOrganizer {
     }
 
     // MARK: - Helpers
+
+    private func parseDate(_ dateString: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter.date(from: dateString)
+    }
 
     func detectVolumes() -> [String] {
         let volumes = (try? fm.contentsOfDirectory(atPath: "/Volumes")) ?? []
